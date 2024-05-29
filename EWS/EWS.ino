@@ -53,7 +53,7 @@ bool wifiConnected = false;
 
 volatile byte buttonPressed = false;
 bool waterON = false;
-bool waterPreviouseState = false;
+bool waterPreviousState = false;
 unsigned long serialTimeout = 1000;
 const unsigned long waterCutoffTime = 2 * 60000; //set to 2mins initially
 const unsigned long flowReadTime = 1000; //read the flow reade once a second
@@ -216,13 +216,13 @@ void flowCount()
 
 void loop()
 {
-   if (buttonPressed) {
-    Serial.println("Button Pressed");
-    buttonPressed = false;
-    waterON = !waterON;
-   }
+  //  if (buttonPressed) {
+  //   Serial.println("Button Pressed");
+  //   buttonPressed = false;
+  //   waterON = !waterON;
+  //  }
    mqttClient.poll();
-   waterToggle();
+  //  waterToggle();
    flowFunction();
    heartbeatMQTT();
 }
@@ -231,16 +231,30 @@ void handleButtonPress()
 {
   if (millis() - buttonBounceTime > BOUNCE_DURATION)  
   {
-    buttonPressed = true; 
+    // buttonPressed = true; 
+    waterToggle("TOGGLE");
     buttonBounceTime = millis();
   }
 }
 
-void waterToggle()
+void waterToggle(String waterState)
 {
-  if (waterPreviouseState != waterON)
+  if (waterState = "TOGGLE")
   {
-    buttonBounceTime = millis(); //stop the button triggering on strange power senarios
+    waterON = !waterON;
+  }
+  else if (waterState = "ON")
+  {
+    waterON = true;
+  }
+  else if (waterState = "OFF")
+  {
+    waterON = false;
+  }
+
+  if (waterPreviousState != waterON)
+  {
+    buttonBounceTime = millis(); //stop the button triggering on strange power scenarios
     if(waterON)
     {
       digitalWrite(relayPin, HIGH);
@@ -252,7 +266,7 @@ void waterToggle()
       digitalWrite(ledPin, LOW);
     }
     MQTTSend(topicState, waterON ? "ON" : "OFF");
-    waterPreviouseState = waterON;
+    waterPreviousState = waterON;
   }
 }
 
@@ -305,8 +319,8 @@ void flowFunction()
 
   if (flowRunTimer.justFinished())
     {
-      waterON = false;
-      waterToggle();
+      // waterON = false;
+      waterToggle("OFF");
     }
 
 }
@@ -335,25 +349,20 @@ void onMqttMessage(int messageSize)
     mqttClient.readBytes(message, messageSize);
     message[messageSize] = '\0'; // Null-terminate the char array
 
-    // while (mqttClient.available())
-    // {   
-    //     message = (char)mqttClient.readBytes()();
-    //     Serial.print(message);
-    // }
-    // Serial.print("Message: ");
-    // Serial.println(message);
 
     if (topic == topicSet)
     {
       if(strcmp(message,"ON") == 0)
       {
         Serial.println("Turing Water on");
-        waterON = true;
+        // waterON = true;
+        waterToggle("ON");
       }
       else if(strcmp(message,"OFF") == 0)
       {
         Serial.println("Turing Water off");
-        waterON = false;
+        // waterON = false;
+        waterToggle("OFF");
       }
     }
 
