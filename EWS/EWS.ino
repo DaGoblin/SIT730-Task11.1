@@ -48,6 +48,8 @@ const String configPayload = R"(
 const String topicState = "homeassistant/switch/ews/state";
 const String topicSet = "homeassistant/switch/ews/set";
 
+bool wifiFailed = false;
+bool wifiConnected = false;
 
 volatile byte buttonPressed = false;
 bool waterON = false;
@@ -58,19 +60,22 @@ const unsigned long flowReadTime = 1000; //read the flow reade once a second
 const unsigned long flowResetTime = 60000; //reset the flow timer once a minuter this is used to show liters per min.
 const unsigned long heartbeatMQTTTime = 30000;
 volatile unsigned long buttonBounceTime=0; 
+const unsigned long WiFiCheckTime = 60000;
+const unsigned long MQTTCheckTime = 60000;
 
 millisDelay flowReadTimer;
 millisDelay flowRunTimer;
 millisDelay flowResetTimer;
 millisDelay heartbeatMQTTTimer;
+millisDelay WiFiCheckTimer;
+millisDelay MQTTCheckTimer;
 
 FlowSensor Sensor(type, flowSensorPin);
 
 
 void setup()
 {
-  // while (!Serial);
-  
+ 
   pinMode(buttonPin, INPUT);         
   pinMode(relayPin, OUTPUT);
   pinMode(ledPin, OUTPUT);    
@@ -81,9 +86,8 @@ void setup()
   
 
   serialSetup();
-  setupWiFi();
-  setupMQTT();
-  MQTTSend(topicConfig, configPayload); //send Discovery to Home Assistant
+  WiFiConnect();
+  connectMQTT();
   mqttClient.subscribe(topicSet);
   Sensor.begin(flowCount);
 
@@ -106,65 +110,93 @@ void serialSetup()
   }
 }
 
-void setupWiFi()
+void checkWiFi()
 {
-    // initialize WiFi connection
-    Serial.print("Attempting to connect to SSID: ");
-    lcd.send_string("Try Wifi");
-    Serial.println(ssid);
-    unsigned long start = millis();
-    while (WiFi.begin(ssid, pass) != WL_CONNECTED)
-    {
-        // failed, retry
-        Serial.print(".");
-        delay(5000);
-        if (millis() - start > 16000)         
-          break;
-    }
-    lcd.clear();
-    lcd.setCursor(0,0);
+  
+  if(WiFiCheckTimer.justFinished())
+  {
+    Serial.println("Running WiFi Check");
+    Serial.println(WiFi.status());
 
-    if(WiFi.status() == WL_CONNECTED){
-      Serial.println("You're connected to the network");
-      Serial.println();
-      lcd.send_string("Wifi Connected");
-    }
-    else if(WiFi.status()== WL_CONNECT_FAILED)
+    int statusWiFi = WiFi.status();
+    if(statusWiFi==WL_CONNECTION_LOST || statusWiFi==WL_DISCONNECTED || statusWiFi==WL_CONNECT_FAILED || statusWiFi==WL_IDLE_STATUS) //if no connection
+      {
+        WiFiConnect();
+      }
+    WiFiCheckTimer.repeat();  
+  }
+
+  if(WiFi.status()==WL_CONNECTED && !wifiConnected)
     {
-        Serial.println("Unable to connect to WiFi");
-        Serial.println();
-        lcd.send_string("No Wifi");
+      lcd.clear();
+      lcd.setCursor(0,0);
+      Serial.println("You're connected to the network");
+      lcd.send_string("Wifi Connected");
+      wifiConnected = true;
     }
-    
-    Serial.println("You're connected to the network");
-    Serial.println();
-    // lcd.send_string();
+
+  if(WiFi.status()== WL_CONNECT_FAILED && !wifiFailed)
+  {
+      lcd.clear();
+      lcd.setCursor(0,0);
+      Serial.println("Unable to connect to WiFi");
+      Serial.println();
+      lcd.send_string("No Wifi");
+      wifiFailed = true;
+  }
 }
 
-void setupMQTT()
+void WiFiConnect()
 {
+  wifiFailed = false;
+  wifiConnected = false;
+  lcd.clear();
+  lcd.setCursor(0,0);
+  Serial.print("Attempting to connect to SSID: ");
+  Serial.println(ssid);
+  lcd.send_string("Try Wifi");
+  WiFi.begin(ssid,pass);
+  checkWiFi();
+}
+
+void checkMQTT()
+{
+  if(MQTTCheckTimer.justFinished())
+  {
+    if (!mqttClient.connected())
+    {
+      connectMQTT();
+    } 
+    MQTTCheckTimer.repeat();
+  }
+}
+
+void connectMQTT()
+{
+    if(WiFi.status()!=WL_CONNECTED) return;
     Serial.print("Attempting to connect to the MQTT broker: ");
     Serial.println(broker);
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.send_string("Try MQTT");
     mqttClient.setUsernamePassword(mqttUser, mqttPass);
-    unsigned long start = millis();
 
     if (!mqttClient.connect(broker, port))
     {
         Serial.print("MQTT connection failed! Error code = ");
         Serial.println(mqttClient.connectError());
         lcd.send_string(("MQTT Err:" + String(mqttClient.connectError())).c_str());
-        while (1)
-        {
-          if (millis() - start > 5000)         
-            break;
-        }
     }
 
-    Serial.println("You're connected to the MQTT broker!");
-    Serial.println();
+    if (mqttClient.connected()) 
+    {
+      Serial.println("You're connected to the MQTT broker!");
+      Serial.println();
+      lcd.clear();
+      lcd.setCursor(0,0);
+      lcd.send_string("MQTT Connected");
+      MQTTSend(topicConfig, configPayload); //send Discovery to Home Assistant 
+    }
 
     mqttClient.onMessage(onMqttMessage);
 }
