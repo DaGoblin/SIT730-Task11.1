@@ -19,8 +19,6 @@ char mqttPass[] = SECRET_MQTT_PASS; // MQTT password
 
 WiFiClient wifiClient;
 
-int statusWiFi = WL_IDLE_STATUS;  
-
 //MQTT Connection Details
 const char broker[] = "192.168.1.10";
 int port = 1883;
@@ -98,7 +96,7 @@ void checkWiFi()
     Serial.println("Running WiFi Check");
     Serial.println(WiFi.status());
 
-    statusWiFi = WiFi.status();
+    int statusWiFi = WiFi.status();
     if(statusWiFi==WL_CONNECTION_LOST || statusWiFi==WL_DISCONNECTED || statusWiFi==WL_CONNECT_FAILED || statusWiFi==WL_IDLE_STATUS) //if no connection
       {
         WiFiConnect();
