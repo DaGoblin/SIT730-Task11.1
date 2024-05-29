@@ -27,22 +27,7 @@ WiFiClient wifiClient;
 const char broker[] = "192.168.1.10";
 int port = 1883;
 MqttClient mqttClient(wifiClient);
-// const String topicConfig = "homeassistant/valve/ewsvalve/config";
-// const String configPayload = R"(
-// {
-//    "name":null,
-//    "device_class":"water",
-//    "command_topic":"homeassistant/valve/ewsvalve/set",
-//    "state_topic":"homeassistant/valve/ewsvalve/state",
-//    "unique_id":"ews12341",
-//    "device":{
-//       "identifiers":[
-//          "EWS101"
-//       ],
-//       "name":"EWS"
-//    }
-// }
-// )";
+
 const String topicConfig = "homeassistant/switch/ews/config";
 const String configPayload = R"(
 {
@@ -60,8 +45,6 @@ const String configPayload = R"(
 )";
 
 
-
-//"
 const String topicState = "homeassistant/switch/ews/state";
 const String topicSet = "homeassistant/switch/ews/set";
 

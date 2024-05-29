@@ -46,8 +46,9 @@ const String topicState = "homeassistant/binary_sensor/leaksensor1/state";
 const String topicEWSSet = "homeassistant/switch/ews/set";
 
 bool waterDetected = false;
-const unsigned long serialTimeout = 1000;
-const unsigned long WiFiTimeout = 5000;
+bool wifiFailed = false;
+bool wifiConnected = false;
+const unsigned long serialTimeout = 2000;
 millisDelay sensorReadTimer;
 millisDelay heartbeatMQTTTimer;
 millisDelay WiFiCheckTimer;
@@ -63,11 +64,6 @@ const unsigned long buzzerTime = 500;
 
 
 void setup() {
-	// setupWiFi();
-
-  
-  // Set D7 as an OUTPUT
-	
   
   //setup Pins
   pinMode(sensorPower, OUTPUT);
@@ -76,14 +72,15 @@ void setup() {
   digitalWrite(connectionLED, LOW);
   digitalWrite(LED, LOW);
   digitalWrite(sensorPower, LOW);
-  // buzzerTone.begin(buzzerPin);
   noTone(buzzerPin);
+
+
   //setup connectivity
   serialSetup();
   WiFiConnect();
   connectMQTT();
-  MQTTSend(topicConfig, configPayload); //send Discovery to Home Assistant
-	
+  
+
   //Start Timers
   sensorReadTimer.start(sensorReadTime);
   heartbeatMQTTTimer.start(heartbeatMQTTTime);
@@ -91,50 +88,50 @@ void setup() {
   MQTTCheckTimer.start(MQTTCheckTime);
   buzzerTimer.start(buzzerTime);
 	
-	
 }
 
 void checkWiFi()
 {
+  
   if(WiFiCheckTimer.justFinished())
   {
+    Serial.println("Running WiFi Check");
+    Serial.println(WiFi.status());
+
     statusWiFi = WiFi.status();
-    if(statusWiFi==WL_CONNECTION_LOST || statusWiFi==WL_DISCONNECTED) //if no connection
+    if(statusWiFi==WL_CONNECTION_LOST || statusWiFi==WL_DISCONNECTED || statusWiFi==WL_CONNECT_FAILED || statusWiFi==WL_IDLE_STATUS) //if no connection
       {
-        digitalWrite(9, LOW); //LED OFF to show disconnected
-        WiFiConnect(); //call connect to wifi
+        WiFiConnect();
       }
     WiFiCheckTimer.repeat();  
   }
 
-}
-
-
-void WiFiConnect()
-{
-  unsigned long start = millis();
-  statusWiFi = WL_IDLE_STATUS;
-  Serial.print("Attempting to connect to SSID: ");
-  Serial.println(ssid);
-  while(statusWiFi!=WL_CONNECTED)
-  {
-    if (millis() - start > WiFiTimeout)         
-    break;
-    statusWiFi = WiFi.begin(ssid,pass);
-    if(statusWiFi==WL_CONNECTED) 
+  if(WiFi.status()==WL_CONNECTED && !wifiConnected)
     {
       Serial.println("You're connected to the network");
       digitalWrite(connectionLED, HIGH);
+      wifiConnected = true;
     }
-    else delay(500);
-  }
 
-  if(WiFi.status()== WL_CONNECT_FAILED)
+  if(WiFi.status()== WL_CONNECT_FAILED && !wifiFailed)
   {
       Serial.println("Unable to connect to WiFi");
       Serial.println();
       digitalWrite(connectionLED, LOW);
+      wifiFailed = true;
   }
+}
+
+void WiFiConnect()
+{
+  digitalWrite(9, LOW); //LED OFF to show disconnected
+  wifiFailed = false;
+  wifiConnected = false;
+
+  Serial.print("Attempting to connect to SSID: ");
+  Serial.println(ssid);
+  WiFi.begin(ssid,pass);
+  checkWiFi();
 }
 
 void serialSetup()
@@ -149,7 +146,6 @@ void serialSetup()
 
 void checkMQTT()
 {
-  if(statusWiFi!=WL_CONNECTED) return;
   if(MQTTCheckTimer.justFinished())
   {
     if (!mqttClient.connected())
@@ -159,16 +155,16 @@ void checkMQTT()
     } 
     MQTTCheckTimer.repeat();
   }
-
 }
 
 
 void connectMQTT()
 {
+    if(WiFi.status()!=WL_CONNECTED) return;
     Serial.print("Attempting to connect to the MQTT broker: ");
     Serial.println(broker);
     mqttClient.setUsernamePassword(mqttUser, mqttPass);
-
+      
     if (!mqttClient.connect(broker, port))
     {
         Serial.print("MQTT connection failed! Error code = ");
@@ -180,6 +176,7 @@ void connectMQTT()
       Serial.println("You're connected to the MQTT broker!");
       Serial.println();
       digitalWrite(connectionLED, HIGH);
+      MQTTSend(topicConfig, configPayload); //send Discovery to Home Assistant
     }
     // mqttClient.onMessage(onMqttMessage);
 }
@@ -201,7 +198,6 @@ void loop() {
   checkWiFi();
   checkMQTT();
   heartbeatMQTT();
-
 }
 
 void heartbeatMQTT()
@@ -211,7 +207,6 @@ void heartbeatMQTT()
     MQTTSend(topicState, waterDetected ? "ON" : "OFF");
     heartbeatMQTTTimer.repeat();
   }
-
 }
 
 
@@ -224,18 +219,18 @@ void processSensor(int level)
   if (level > 70) {
     waterDetected = true;
     digitalWrite(LED,HIGH);
+
     if(buzzerTimer.justFinished())
     {
       tone(buzzerPin,buzzerToneFre,250);
-      // buzzerTone.play(buzzerToneFre,250);
       buzzerTimer.repeat();
-    }   
+    }
+
   }
   else
   {
     waterDetected = false;
     digitalWrite(LED,LOW);
-    // buzzerTone.stop();
     noTone(buzzerPin);
   }
 
@@ -244,8 +239,6 @@ void processSensor(int level)
     MQTTSend(topicState, waterDetected ? "ON" : "OFF");
     if(waterDetected) MQTTSend(topicEWSSet, "OFF");
   }
-
-
 }
 
 
@@ -254,7 +247,6 @@ int readSensor() {
   int val = 0;
   if(sensorReadTimer.justFinished())
   {
-
     digitalWrite(sensorPower, HIGH);	// Turn the sensor ON
     delay(10);							// wait 10 milliseconds
     val = analogRead(sensorPin);		// Read the analog value form sensor
