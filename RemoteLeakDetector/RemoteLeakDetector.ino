@@ -3,6 +3,7 @@
 #include <WiFiNINA.h>
 #include <Arduino.h>
 #include <millisDelay.h>
+#include <wdt_samd21.h>
 
 
 // Sensor pins
@@ -62,7 +63,7 @@ const unsigned long buzzerTime = 500;
 
 
 void setup() {
-  
+  wdt_init ( WDT_CONFIG_PER_16K );
   //setup Pins
   pinMode(sensorPower, OUTPUT);
   pinMode(LED, OUTPUT); 
@@ -86,6 +87,19 @@ void setup() {
   MQTTCheckTimer.start(MQTTCheckTime);
   buzzerTimer.start(buzzerTime);
 	
+}
+
+void loop() {
+	//get the reading from the function below and print it
+	int level = readSensor();
+	
+  if(level != -1) processSensor(level);
+  checkWiFi();
+  checkMQTT();
+  heartbeatMQTT();
+  wdt_reset();
+  testWDT();
+
 }
 
 void checkWiFi()
@@ -188,15 +202,7 @@ void MQTTSend(String topic, String messageMQTT)
     Serial.println("Payload: " + messageMQTT);
 }
 
-void loop() {
-	//get the reading from the function below and print it
-	int level = readSensor();
-	
-  if(level != -1) processSensor(level);
-  checkWiFi();
-  checkMQTT();
-  heartbeatMQTT();
-}
+
 
 void heartbeatMQTT()
 {
@@ -256,4 +262,25 @@ int readSensor() {
     val = -1;
   }
 	return val;							// send current reading
+}
+
+void testWDT()
+{
+  // Function to simualte a crash for watch dog timer(WDT) if we recive a 1 from the serial
+  // an infinite loop printing the time in 1 second increments is started the WTD will reboot at 16 secs
+  while (Serial.available() > 0) 
+  {
+    int serialInput = Serial.parseInt();
+    if(serialInput == 1)
+    {
+      Serial.println("Starting infinite loop");
+      int i = 0;
+      while(1)
+      {
+        i++;
+        Serial.println(i);
+        delay(1000);
+      }
+    }
+  }
 }
