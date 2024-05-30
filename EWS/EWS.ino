@@ -6,6 +6,7 @@
 #include <WiFiNINA.h>
 #include <Wire.h>
 #include "Waveshare_LCD1602_RGB.h"
+#include <wdt_samd21.h>
 
 #define type YFS201
 #define BOUNCE_DURATION 250
@@ -81,7 +82,8 @@ enum waterModes{
 
 void setup()
 {
- 
+    // Initialze WDT with a 16 sec. timeout
+  wdt_init ( WDT_CONFIG_PER_16K );
   pinMode(buttonPin, INPUT);         
   pinMode(relayPin, OUTPUT);
   pinMode(ledPin, OUTPUT);    
@@ -104,6 +106,16 @@ void setup()
   
   flowReadTimer.start(flowReadTime);
   flowResetTimer.start(flowResetTime);
+}
+
+void loop()
+{
+  mqttClient.poll();
+  waterCheck(waterNone);
+  flowFunction();
+  heartbeatMQTT();
+  wdt_reset();
+  // testWDT();
 }
 
 void serialSetup()
@@ -220,13 +232,6 @@ void flowCount()
 	Sensor.count();
 }
 
-void loop()
-{
-  mqttClient.poll();
-  waterCheck(waterNone);
-  flowFunction();
-  heartbeatMQTT();
-}
 
 void handleButtonPress()
 {
@@ -280,7 +285,25 @@ void valveControl()
     }
 }
 
-
+void testWDT(){
+  // Function to simualte a crash for watch dog timer(WDT) if we recive a 1 from the serial
+  // an infinite loop printing the time in 1 second increments is started the WTD will reboot at 16 secs
+  while (Serial.available() > 0) 
+  {
+    int serialInput = Serial.parseInt();
+    if(serialInput == 1)
+    {
+      Serial.println("Starting infinite loop");
+      int i = 0;
+      while(1)
+      {
+        i++;
+        Serial.println(i);
+        delay(1000);
+      }
+    }
+  }
+}
 
 void flowFunction()
 {
