@@ -52,8 +52,8 @@ bool wifiFailed = false;
 bool wifiConnected = false;
 
 volatile byte buttonPressed = false;
-bool waterON = false;
-bool waterPreviouseState = false;
+volatile bool waterON = false;
+bool waterPreviousState = false;
 unsigned long serialTimeout = 1000;
 const unsigned long waterCutoffTime = 2 * 60000; //set to 2mins initially
 const unsigned long flowReadTime = 1000; //read the flow reade once a second
@@ -72,6 +72,12 @@ millisDelay MQTTCheckTimer;
 
 FlowSensor Sensor(type, flowSensorPin);
 
+enum waterModes{
+  turnWaterOn,
+  turnWaterOff,
+  toggleWaterState,
+  waterNone
+};
 
 void setup()
 {
@@ -216,31 +222,52 @@ void flowCount()
 
 void loop()
 {
-   if (buttonPressed) {
-    Serial.println("Button Pressed");
-    buttonPressed = false;
-    waterON = !waterON;
-   }
-   mqttClient.poll();
-   waterToggle();
-   flowFunction();
-   heartbeatMQTT();
+  mqttClient.poll();
+  waterCheck(waterNone);
+  flowFunction();
+  heartbeatMQTT();
 }
 
 void handleButtonPress()
 {
+  // In this function we handle if the button has been pressed. 
+  // We use a debounce timer to stop the button being triggered multiple times in a short period
+  // Water State is toggle and we call valve control to immediately turn the water on or off
+  // All other water check fucntions like send MQTT updates are handled by the waterCheck function in the main loop
   if (millis() - buttonBounceTime > BOUNCE_DURATION)  
   {
-    buttonPressed = true; 
+    waterON = !waterON;
+    valveControl();
     buttonBounceTime = millis();
   }
 }
 
-void waterToggle()
+void waterCheck(waterModes waterState)
 {
-  if (waterPreviouseState != waterON)
+  if (waterState == toggleWaterState)
   {
-    buttonBounceTime = millis(); //stop the button triggering on strange power senarios
+    waterON = !waterON;
+  }
+  else if (waterState == turnWaterOn)
+  {
+    waterON = true;
+  }
+  else if (waterState == turnWaterOff)
+  {
+    waterON = false;
+  }
+
+  if (waterPreviousState != waterON)
+  {
+    buttonBounceTime = millis(); //stop the button triggering on strange power scenarios
+    valveControl();
+    MQTTSend(topicState, waterON ? "ON" : "OFF");
+    waterPreviousState = waterON;
+  }
+}
+
+void valveControl()
+{
     if(waterON)
     {
       digitalWrite(relayPin, HIGH);
@@ -251,10 +278,9 @@ void waterToggle()
       digitalWrite(relayPin, LOW);
       digitalWrite(ledPin, LOW);
     }
-    MQTTSend(topicState, waterON ? "ON" : "OFF");
-    waterPreviouseState = waterON;
-  }
 }
+
+
 
 void flowFunction()
 {
@@ -283,7 +309,6 @@ void flowFunction()
     }
     else {
       Serial.println("Water Off");
-      // lcd.send_string("W Off                              ");
       lcd.send_string(charLCD16("W Off").c_str());
     }
     lcd.setCursor(0,1);
@@ -305,8 +330,7 @@ void flowFunction()
 
   if (flowRunTimer.justFinished())
     {
-      waterON = false;
-      waterToggle();
+      waterCheck(turnWaterOff);
     }
 
 }
@@ -335,25 +359,18 @@ void onMqttMessage(int messageSize)
     mqttClient.readBytes(message, messageSize);
     message[messageSize] = '\0'; // Null-terminate the char array
 
-    // while (mqttClient.available())
-    // {   
-    //     message = (char)mqttClient.readBytes()();
-    //     Serial.print(message);
-    // }
-    // Serial.print("Message: ");
-    // Serial.println(message);
 
     if (topic == topicSet)
     {
       if(strcmp(message,"ON") == 0)
       {
         Serial.println("Turing Water on");
-        waterON = true;
+        waterCheck(turnWaterOn);
       }
       else if(strcmp(message,"OFF") == 0)
       {
         Serial.println("Turing Water off");
-        waterON = false;
+        waterCheck(turnWaterOff);
       }
     }
 
