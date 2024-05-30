@@ -115,7 +115,7 @@ void loop()
   flowFunction();
   heartbeatMQTT();
   wdt_reset();
-  // testWDT();
+  testWDT();
 }
 
 void serialSetup()
@@ -310,7 +310,10 @@ void flowFunction()
 
 	if (flowReadTimer.justFinished())
 	{
+    
 		Sensor.read();
+    
+    Serial.println(Sensor.getFlowRate_m());
     float flowRate = Sensor.getFlowRate_m();
     if (flowRate > 1.0) {
       if (!flowRunTimer.isRunning())
