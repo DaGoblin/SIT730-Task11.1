@@ -58,6 +58,7 @@ const unsigned long heartbeatMQTTTime = 30000;
 const unsigned long WiFiCheckTime = 60000;
 const unsigned long MQTTCheckTime = 60000;
 const unsigned long buzzerTime = 500;
+const int waterTriggerLvl = 70;
 
 // Tone buzzerTone;
 
@@ -220,7 +221,7 @@ void processSensor(int level)
   Serial.print("Water level: ");
 	Serial.println(level);
 
-  if (level > 70) {
+  if (level > waterTriggerLvl) {
     waterDetected = true;
     digitalWrite(LED,HIGH);
 
